@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Classroom Seating Chart</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2canvas for downloading the chart as an image -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* Custom styles for a better look and feel */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .desk {
+            touch-action: none; /* Recommended for better drag-and-drop on touch devices */
+            cursor: grab;
+            position: absolute; /* Desks are positioned absolutely within the chart area */
+            /* Width is now set dynamically by JS */
+            height: 52px; /* Fixed height for consistency */
+            display: flex; /* Use flexbox for vertical and horizontal centering */
+            align-items: center;
+            justify-content: center;
+            padding: 0.25rem; /* A little padding */
+            box-sizing: border-box; /* Padding is included in width/height */
+            word-wrap: break-word; /* Allow long names to wrap */
+            text-align: center; /* Ensure text is centered if it wraps */
+            transition: top 0.1s ease, left 0.1s ease, width 0.1s ease; /* Smooth transition for snapping and resizing */
+        }
+        .desk:active {
+            cursor: grabbing;
+        }
+        #seating-chart {
+            background-color: #f0f9ff;
+            background-image:
+                linear-gradient(to right, #dbeafe 1px, transparent 1px),
+                linear-gradient(to bottom, #dbeafe 1px, transparent 1px);
+            /* Background size is now set dynamically by JS */
+            position: relative; /* This is crucial for positioning the desks inside */
+            /* Height is now set dynamically by JS. No more overflow:hidden or min-height */
+            padding-bottom: 20px; /* Add some space at the bottom */
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-slate-900">Classroom Seating Chart Maker</h1>
+            <p class="text-lg text-slate-600 mt-2">Create, arrange, and download your classroom seating plan with ease.</p>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <!-- Left Panel: Instructions and Student Input -->
+            <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg">
+                <div>
+                    <h2 class="text-2xl font-semibold mb-3">1. Add Students</h2>
+                    <label for="student-names" class="block text-sm font-medium text-slate-700 mb-2">Paste your student list below, one name per line.</label>
+                    <textarea id="student-names" rows="10" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="Alice Smith&#10;Bob Johnson&#10;Charlie Brown..."></textarea>
+                    
+                    <div class="mt-4">
+                        <label for="class-remark" class="block text-sm font-medium text-slate-700 mb-2">Class Name / Remark (Optional)</label>
+                        <input type="text" id="class-remark" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="e.g., Grade 5 - Section B">
+                    </div>
+
+                    <button id="generate-btn" class="mt-4 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-transform transform hover:scale-105">
+                        Generate & Arrange Desks
+                    </button>
+                    <p class="text-xs text-slate-500 mt-3"><strong>Tip:</strong> Click on a desk to change its color, then drag to arrange.</p>
+                    <div id="error-message" class="mt-2 text-red-600 text-sm font-medium"></div>
+                </div>
+            </div>
+
+            <!-- Right Panel: The Seating Chart and Download Button -->
+            <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg relative">
+                <div id="capture-area">
+                    <div id="seating-chart" class="w-full rounded-t-xl border-2 border-slate-200 border-b-0">
+                        <!-- Droppable area for student desks -->
+                    </div>
+                    <div class="p-4 text-center bg-white rounded-b-xl border-x-2 border-b-2 border-slate-200">
+                        <h3 id="remark-display" class="text-xl font-semibold text-slate-700 mb-1"></h3>
+                        <h2 class="text-2xl font-semibold">Classroom Layout</h2>
+                        <p class="text-slate-500">Teacher's Desk / Whiteboard Area</p>
+                    </div>
+                </div>
+
+                <!-- Download Button -->
+                <div class="mt-6">
+                     <h2 class="text-2xl font-semibold mb-3 text-center">2. Save Your Chart</h2>
+                    <button id="download-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 active:bg-emerald-800 transition-transform transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-not-allowed" disabled>
+                        Download as A4 Landscape PNG
+                    </button>
+                    <p class="text-xs text-center mt-2 text-slate-500">Enable this button by generating desks.</p>
+                </div>
+            </div>
+        </div>
+         <!-- Footer -->
+        <footer class="text-center mt-12 text-slate-500 text-sm">
+            <p>Created with Gemini.</p>
+        </footer>
+    </div>
+
+    <!-- Color Palette (hidden by default) -->
+    <div id="color-palette" class="absolute z-20 hidden bg-white shadow-xl rounded-lg p-2 flex space-x-1 border border-slate-200">
+        <div class="color-swatch w-8 h-8 rounded-full cursor-pointer bg-blue-200 border-2 border-white hover:border-blue-500" data-color="bg-blue-200"></div>
+        <div class="color-swatch w-8 h-8 rounded-full cursor-pointer bg-green-200 border-2 border-white hover:border-green-500" data-color="bg-green-200"></div>
+        <div class="color-swatch w-8 h-8 rounded-full cursor-pointer bg-yellow-200 border-2 border-white hover:border-yellow-500" data-color="bg-yellow-200"></div>
+        <div class="color-swatch w-8 h-8 rounded-full cursor-pointer bg-red-200 border-2 border-white hover:border-red-500" data-color="bg-red-200"></div>
+        <div class="color-swatch w-8 h-8 rounded-full cursor-pointer bg-purple-200 border-2 border-white hover:border-purple-500" data-color="bg-purple-200"></div>
+        <div class="color-swatch w-8 h-8 rounded-full cursor-pointer bg-white border-2 border-slate-300 hover:border-slate-500" data-color="bg-white"></div>
+    </div>
+
+
+    <script>
+        const generateBtn = document.getElementById('generate-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const studentNamesTextarea = document.getElementById('student-names');
+        const classRemarkInput = document.getElementById('class-remark');
+        const remarkDisplay = document.getElementById('remark-display');
+        const seatingChart = document.getElementById('seating-chart');
+        const colorPalette = document.getElementById('color-palette');
+        const errorMessage = document.getElementById('error-message');
+
+        // --- Grid and Desk Constants ---
+        const GRID_COLS = 6;
+        const CELL_HEIGHT = 70; // This can remain fixed
+        const DESK_HEIGHT = 52;
+        const Y_PADDING = (CELL_HEIGHT - DESK_HEIGHT) / 2;
+        
+        // --- Layout metrics that will be calculated dynamically ---
+        let layoutMetrics = {
+            CELL_WIDTH: 0,
+            DESK_WIDTH: 0,
+            X_PADDING: 0,
+        };
+
+        let draggedItem = null;
+        let selectedDeskForColoring = null;
+        const colorClasses = ['bg-blue-200', 'bg-green-200', 'bg-yellow-200', 'bg-red-200', 'bg-purple-200', 'bg-white'];
+
+        // --- 1. Generate and Auto-Arrange Desks ---
+        generateBtn.addEventListener('click', () => {
+            seatingChart.innerHTML = ''; // Clear the entire chart
+            errorMessage.textContent = ''; // Clear any previous errors
+
+            const names = studentNamesTextarea.value.trim().split('\n').filter(name => name.trim() !== '');
+
+            if (names.length === 0) {
+                errorMessage.textContent = 'Please enter at least one student name.';
+                remarkDisplay.textContent = ''; // Clear remark on error too
+                return;
+            }
+            
+            // If successful, update the remark text
+            const remarkText = classRemarkInput.value.trim();
+            remarkDisplay.textContent = remarkText;
+
+            names.forEach((name, index) => {
+                const row = Math.floor(index / GRID_COLS);
+                const col = index % GRID_COLS;
+                const desk = createDeskElement(name.trim(), row, col);
+                seatingChart.appendChild(desk);
+            });
+            
+            updateLayoutAndRepositionDesks(); // Initial positioning and sizing
+            downloadBtn.disabled = false;
+        });
+
+        // --- Helper function to create a desk element with data attributes ---
+        function createDeskElement(name, row, col) {
+            const desk = document.createElement('div');
+            desk.textContent = name;
+            desk.className = 'desk bg-white rounded-lg shadow-md border border-slate-200 select-none z-10';
+            desk.draggable = true;
+            desk.dataset.row = row;
+            desk.dataset.col = col;
+            return desk;
+        }
+
+        // --- 2. Responsive Layout and Positioning ---
+
+        function updateLayoutMetrics() {
+            const chartWidth = seatingChart.clientWidth;
+            layoutMetrics.CELL_WIDTH = chartWidth / GRID_COLS;
+            layoutMetrics.DESK_WIDTH = layoutMetrics.CELL_WIDTH * 0.92; // Use 92% of cell for some padding
+            layoutMetrics.X_PADDING = (layoutMetrics.CELL_WIDTH - layoutMetrics.DESK_WIDTH) / 2;
+        }
+
+        function repositionDesk(desk) {
+            const { row, col } = desk.dataset;
+            desk.style.width = `${layoutMetrics.DESK_WIDTH}px`;
+            desk.style.height = `${DESK_HEIGHT}px`;
+            desk.style.left = `${col * layoutMetrics.CELL_WIDTH + layoutMetrics.X_PADDING}px`;
+            desk.style.top = `${row * CELL_HEIGHT + Y_PADDING}px`;
+            adjustFontSize(desk);
+        }
+
+        function adjustFontSize(desk) {
+            let fontSize = 16;
+            desk.style.fontSize = `${fontSize}px`;
+            // Reduce font size until text no longer overflows
+            while((desk.scrollHeight > desk.clientHeight || desk.scrollWidth > desk.clientWidth) && fontSize > 8) {
+                fontSize--;
+                desk.style.fontSize = `${fontSize}px`;
+            }
+        }
+
+        function updateLayoutAndRepositionDesks() {
+            if (seatingChart.children.length === 0) return;
+            
+            updateLayoutMetrics();
+            
+            // Reposition all desks
+            const desks = seatingChart.querySelectorAll('.desk');
+            desks.forEach(repositionDesk);
+            
+            // Update background grid size
+            seatingChart.style.backgroundSize = `${layoutMetrics.CELL_WIDTH}px ${CELL_HEIGHT}px`;
+            
+            // Update chart height
+            const numRows = Math.ceil(desks.length / GRID_COLS);
+            const requiredHeight = numRows * CELL_HEIGHT;
+            seatingChart.style.height = `${Math.max(400, requiredHeight)}px`;
+        }
+        
+        // --- 3. Drag and Drop Logic ---
+        document.addEventListener('dragstart', (e) => {
+            if (e.target.classList.contains('desk')) {
+                draggedItem = e.target;
+                setTimeout(() => { draggedItem.style.visibility = 'hidden'; }, 0);
+            }
+        });
+
+        document.addEventListener('dragend', () => {
+            if (draggedItem) {
+                draggedItem.style.visibility = 'visible';
+                draggedItem = null;
+            }
+        });
+        
+        seatingChart.addEventListener('dragover', (e) => { e.preventDefault(); });
+
+        seatingChart.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (!draggedItem) return;
+
+            const chartRect = seatingChart.getBoundingClientRect();
+            let x = e.clientX - chartRect.left;
+            let y = e.clientY - chartRect.top;
+
+            let targetCol = Math.floor(x / layoutMetrics.CELL_WIDTH);
+            let targetRow = Math.floor(y / CELL_HEIGHT);
+
+            targetCol = Math.max(0, Math.min(targetCol, GRID_COLS - 1));
+            const maxRows = Math.ceil(seatingChart.children.length / GRID_COLS) + 5;
+            targetRow = Math.max(0, Math.min(targetRow, maxRows));
+            
+            const existingDesk = isCellOccupied(targetRow, targetCol);
+            if (!existingDesk || existingDesk === draggedItem) {
+                draggedItem.dataset.row = targetRow;
+                draggedItem.dataset.col = targetCol;
+                repositionDesk(draggedItem);
+            } 
+        });
+
+        function isCellOccupied(row, col) {
+            for (const desk of seatingChart.children) {
+                if (desk.dataset.row == row && desk.dataset.col == col) {
+                    return desk;
+                }
+            }
+            return null;
+        }
+
+        // --- 4. Download Chart ---
+        downloadBtn.addEventListener('click', () => {
+            const chartAreaToCapture = document.getElementById('capture-area');
+            const a4WidthPx = 1754;
+            const a4HeightPx = 1240;
+
+            html2canvas(chartAreaToCapture, {
+                logging: false, useCORS: true, backgroundColor: '#ffffff',
+                width: chartAreaToCapture.scrollWidth, height: chartAreaToCapture.scrollHeight,
+                windowWidth: chartAreaToCapture.scrollWidth, windowHeight: chartAreaToCapture.scrollHeight
+            }).then(originalCanvas => {
+                const a4Canvas = document.createElement('canvas');
+                a4Canvas.width = a4WidthPx;
+                a4Canvas.height = a4HeightPx;
+                const ctx = a4Canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, a4WidthPx, a4HeightPx);
+                ctx.drawImage(originalCanvas, 0, 0, a4WidthPx, a4HeightPx);
+
+                const link = document.createElement('a');
+                link.download = 'seating-chart-A4-landscape.png';
+                link.href = a4Canvas.toDataURL('image/png');
+                link.click();
+                link.remove();
+            }).catch(err => {
+                console.error('Oops, something went wrong!', err);
+                errorMessage.textContent = 'Could not download the chart. Please try again.';
+            });
+        });
+
+        // --- 5. Color Changing Logic ---
+        document.addEventListener('click', (e) => {
+            const clickedDesk = e.target.closest('.desk');
+            const clickedSwatch = e.target.closest('.color-swatch');
+            const isPaletteClick = e.target.closest('#color-palette');
+
+            if (clickedDesk && !draggedItem) {
+                e.preventDefault();
+                selectedDeskForColoring = clickedDesk;
+                const deskRect = clickedDesk.getBoundingClientRect();
+                
+                let topPos = window.scrollY + deskRect.top - colorPalette.offsetHeight - 8;
+                let leftPos = window.scrollX + deskRect.left + (deskRect.width - colorPalette.offsetWidth) / 2;
+
+                if (topPos < window.scrollY) { topPos = window.scrollY + deskRect.bottom + 8; }
+                if (leftPos < 0) leftPos = 8;
+
+                colorPalette.style.top = `${topPos}px`;
+                colorPalette.style.left = `${leftPos}px`;
+                colorPalette.style.display = 'flex';
+
+            } else if (clickedSwatch && selectedDeskForColoring) {
+                const newColor = clickedSwatch.dataset.color;
+                colorClasses.forEach(c => selectedDeskForColoring.classList.remove(c));
+                selectedDeskForColoring.classList.add(newColor);
+                colorPalette.style.display = 'none';
+                selectedDeskForColoring = null;
+
+            } else if (!isPaletteClick) {
+                colorPalette.style.display = 'none';
+                selectedDeskForColoring = null;
+            }
+        });
+
+        // --- Event Listener for window resize ---
+        window.addEventListener('resize', updateLayoutAndRepositionDesks);
+        // Also run on page load
+        document.addEventListener('DOMContentLoaded', updateLayoutAndRepositionDesks);
+
+    </script>
+</body>
+</html>
+
