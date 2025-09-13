@@ -65,7 +65,10 @@
                     
                     <div class="mt-4">
                         <label for="class-remark" class="block text-sm font-medium text-slate-700 mb-2">Class Name / Remark (Optional)</label>
-                        <input type="text" id="class-remark" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="e.g., Grade 5 - Section B">
+                        <div class="flex gap-2">
+                            <input type="text" id="class-remark" class="flex-grow p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="e.g., Grade 5 - Section B">
+                            <button id="update-remark-btn" class="bg-slate-200 text-slate-800 font-semibold py-2 px-4 rounded-lg hover:bg-slate-300 transition">Set</button>
+                        </div>
                     </div>
 
                     <button id="generate-btn" class="mt-4 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-transform transform hover:scale-105">
@@ -121,13 +124,14 @@
         const downloadBtn = document.getElementById('download-btn');
         const studentNamesTextarea = document.getElementById('student-names');
         const classRemarkInput = document.getElementById('class-remark');
+        const updateRemarkBtn = document.getElementById('update-remark-btn');
         const remarkDisplay = document.getElementById('remark-display');
         const seatingChart = document.getElementById('seating-chart');
         const colorPalette = document.getElementById('color-palette');
         const errorMessage = document.getElementById('error-message');
 
         // --- Grid and Desk Constants ---
-        const GRID_COLS = 6;
+        const GRID_COLS = 8; // ADJUSTED TO 8 COLUMNS FOR RELIABLE EXPORT
         const CELL_HEIGHT = 70; // This can remain fixed
         const DESK_HEIGHT = 52;
         const Y_PADDING = (CELL_HEIGHT - DESK_HEIGHT) / 2;
@@ -142,6 +146,12 @@
         let draggedItem = null;
         let selectedDeskForColoring = null;
         const colorClasses = ['bg-blue-200', 'bg-green-200', 'bg-yellow-200', 'bg-red-200', 'bg-purple-200', 'bg-white'];
+        
+        // --- Helper function to update the remark display ---
+        function updateRemark() {
+            const remarkText = classRemarkInput.value.trim();
+            remarkDisplay.textContent = remarkText;
+        }
 
         // --- 1. Generate and Auto-Arrange Desks ---
         generateBtn.addEventListener('click', () => {
@@ -156,9 +166,8 @@
                 return;
             }
             
-            // If successful, update the remark text
-            const remarkText = classRemarkInput.value.trim();
-            remarkDisplay.textContent = remarkText;
+            // Set the remark when generating
+            updateRemark();
 
             names.forEach((name, index) => {
                 const row = Math.floor(index / GRID_COLS);
@@ -170,6 +179,10 @@
             updateLayoutAndRepositionDesks(); // Initial positioning and sizing
             downloadBtn.disabled = false;
         });
+
+        // --- Listener for the dedicated remark update button ---
+        updateRemarkBtn.addEventListener('click', updateRemark);
+
 
         // --- Helper function to create a desk element with data attributes ---
         function createDeskElement(name, row, col) {
@@ -222,10 +235,11 @@
             // Update background grid size
             seatingChart.style.backgroundSize = `${layoutMetrics.CELL_WIDTH}px ${CELL_HEIGHT}px`;
             
-            // Update chart height
+            // Update chart height to be at least 6 rows high
             const numRows = Math.ceil(desks.length / GRID_COLS);
             const requiredHeight = numRows * CELL_HEIGHT;
-            seatingChart.style.height = `${Math.max(400, requiredHeight)}px`;
+            const minHeight = 6 * CELL_HEIGHT; // Minimum height for 6 rows
+            seatingChart.style.height = `${Math.max(minHeight, requiredHeight)}px`;
         }
         
         // --- 3. Drag and Drop Logic ---
@@ -283,10 +297,16 @@
             const a4WidthPx = 1754;
             const a4HeightPx = 1240;
 
+            // FIX: Temporarily set a fixed width on the capture area before taking the screenshot.
+            // This prevents html2canvas from miscalculating the width of responsive elements and clipping the image.
+            const originalWidth = chartAreaToCapture.offsetWidth;
+            chartAreaToCapture.style.width = `${originalWidth}px`;
+
             html2canvas(chartAreaToCapture, {
-                logging: false, useCORS: true, backgroundColor: '#ffffff',
-                width: chartAreaToCapture.scrollWidth, height: chartAreaToCapture.scrollHeight,
-                windowWidth: chartAreaToCapture.scrollWidth, windowHeight: chartAreaToCapture.scrollHeight
+                scale: 2,
+                logging: false,
+                useCORS: true,
+                backgroundColor: '#ffffff'
             }).then(originalCanvas => {
                 const a4Canvas = document.createElement('canvas');
                 a4Canvas.width = a4WidthPx;
@@ -294,7 +314,27 @@
                 const ctx = a4Canvas.getContext('2d');
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, a4WidthPx, a4HeightPx);
-                ctx.drawImage(originalCanvas, 0, 0, a4WidthPx, a4HeightPx);
+
+                const sourceWidth = originalCanvas.width;
+                const sourceHeight = originalCanvas.height;
+                const sourceRatio = sourceWidth / sourceHeight;
+                const destRatio = a4WidthPx / a4HeightPx;
+
+                let newWidth, newHeight, newX, newY;
+
+                if (sourceRatio > destRatio) {
+                    newWidth = a4WidthPx;
+                    newHeight = newWidth / sourceRatio;
+                    newX = 0;
+                    newY = (a4HeightPx - newHeight) / 2;
+                } else {
+                    newHeight = a4HeightPx;
+                    newWidth = newHeight * sourceRatio;
+                    newY = 0;
+                    newX = (a4WidthPx - newWidth) / 2;
+                }
+                
+                ctx.drawImage(originalCanvas, newX, newY, newWidth, newHeight);
 
                 const link = document.createElement('a');
                 link.download = 'seating-chart-A4-landscape.png';
@@ -304,6 +344,9 @@
             }).catch(err => {
                 console.error('Oops, something went wrong!', err);
                 errorMessage.textContent = 'Could not download the chart. Please try again.';
+            }).finally(() => {
+                // IMPORTANT: Remove the fixed width to restore the responsive layout after the capture is complete.
+                chartAreaToCapture.style.width = '';
             });
         });
 
